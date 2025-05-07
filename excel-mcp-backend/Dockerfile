@@ -13,6 +13,8 @@ ENV TZ=Europe/Paris
 ENV WINEARCH=win32
 ENV WINEPREFIX=/root/.wine
 ENV DISPLAY=:99
+ENV MKL_SERVICE_FORCE_INTEL=1
+ENV MKL_THREADING_LAYER=GNU
 
 # Répertoire de travail
 WORKDIR /app
@@ -79,6 +81,9 @@ RUN pip install --no-cache-dir xlwings>=0.30.0
 RUN pip install --no-cache-dir scikit-learn>=1.0.2
 RUN pip install --no-cache-dir accelerate>=0.25.0
 RUN pip install --no-cache-dir bitsandbytes>=0.41.0
+
+RUN pip install --no-cache-dir --timeout 1200 vllm>=0.2.0
+RUN pip install --no-cache-dir ray>=2.6.0
 
 RUN pip install --no-cache-dir protobuf>=3.20.0
 

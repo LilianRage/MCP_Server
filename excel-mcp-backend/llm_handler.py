@@ -1,5 +1,8 @@
-
 import os
+import numpy as np
+
+os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
+os.environ['MKL_THREADING_LAYER'] = 'GNU'
 import logging
 import threading
 import torch
@@ -10,7 +13,10 @@ import re
 import io
 import sys
 import contextlib
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from transformers import AutoTokenizer
+
+# Nouvelle importation pour VLLM
+from vllm import LLM, SamplingParams
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -24,7 +30,7 @@ LLM_ERROR = None
 LLM_AVAILABLE = False
 
 # Configuration du modèle
-MODEL_NAME = "Phind/Phind-CodeLlama-34B-v2"  # Modèle plus petit et plus stable codellama/CodeLlama-13B-Instruct-hf
+MODEL_NAME = "Phind/Phind-CodeLlama-34B-v2"  # Votre modèle préféré
 MODEL_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MAX_NEW_TOKENS = 2048
 TEMPERATURE = 0.1
@@ -37,27 +43,36 @@ Le code doit être exécutable directement et imprimer les résultats.
 Utilise seulement pandas et les bibliothèques standard."""
 
 def load_llm_model_background():
-    """Charge le modèle LLM en arrière-plan"""
+    """Charge le modèle LLM en arrière-plan avec VLLM"""
     global LLM_MODEL, LLM_TOKENIZER, LLM_LOADING, LLM_ERROR, LLM_AVAILABLE
     
     try:
-        logger.info(f"Chargement du modèle LLM {MODEL_NAME}...")
+        logger.info(f"Chargement du modèle LLM {MODEL_NAME} avec VLLM...")
         
-        # Adapter selon les besoins du modèle spécifique
+        # Configuration VLLM
+        # Ajuster ces paramètres selon votre GPU
+        tensor_parallel_size = 1  # Augmenter si vous avez plusieurs GPUs
+        
+        # Charger le tokenizer normalement depuis Hugging Face
         LLM_TOKENIZER = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
-        LLM_MODEL = AutoModelForCausalLM.from_pretrained(
-            MODEL_NAME,
-            torch_dtype=torch.float16 if MODEL_DEVICE == "cuda" else torch.float32,
-            device_map="auto" if MODEL_DEVICE == "cuda" else None,
-            trust_remote_code=True
+        
+        # Charger le modèle avec VLLM - utilise quantification automatique
+        LLM_MODEL = LLM(
+            model=MODEL_NAME,
+            tensor_parallel_size=1,
+            trust_remote_code=True,
+            dtype="half",           # Utiliser float16
+            gpu_memory_utilization=0.85,  # Limiter l'utilisation mémoire à 85%
+            max_model_len=4096,     # Réduire la longueur maximale
+            quantization="bitsandbytes"     # Utiliser la quantification Int8 au lieu de AWQ
         )
         
-        logger.info(f"Modèle LLM {MODEL_NAME} chargé avec succès sur {MODEL_DEVICE}!")
+        logger.info(f"Modèle LLM {MODEL_NAME} chargé avec succès via VLLM sur {MODEL_DEVICE}!")
         LLM_AVAILABLE = True
         LLM_LOADING = False
     
     except Exception as e:
-        LLM_ERROR = f"Erreur lors du chargement du modèle LLM: {str(e)}"
+        LLM_ERROR = f"Erreur lors du chargement du modèle LLM avec VLLM: {str(e)}"
         LLM_LOADING = False
         LLM_AVAILABLE = False
         logger.error(LLM_ERROR)
@@ -83,11 +98,14 @@ def get_llm_status() -> Dict[str, Any]:
         "error": LLM_ERROR,
         "model_loaded": LLM_MODEL is not None and LLM_TOKENIZER is not None,
         "model_name": model_name,
-        "device": MODEL_DEVICE
+        "device": MODEL_DEVICE,
+        "engine": "VLLM"  # Indiquer qu'on utilise VLLM
     }
 
+# Reste des fonctions de manipulation de données inchangées
 def create_dataframe_from_excel_data(excel_data: Dict[str, Any]) -> pd.DataFrame:
     """Convertit les données Excel en DataFrame pandas"""
+    # Votre code existant inchangé
     headers = excel_data.get("headers", [])
     rows = excel_data.get("rows", [])
     
@@ -110,7 +128,7 @@ def create_dataframe_from_excel_data(excel_data: Dict[str, Any]) -> pd.DataFrame
     return df
 
 def generate_python_code(query: str, excel_data: Dict[str, Any]) -> str:
-    """Génère du code Python pour répondre à la requête"""
+    """Génère du code Python pour répondre à la requête en utilisant VLLM"""
     if not LLM_AVAILABLE or LLM_MODEL is None or LLM_TOKENIZER is None:
         raise Exception("Le modèle LLM n'est pas disponible")
     
@@ -159,29 +177,21 @@ Génère uniquement le code Python:
 """
 
     try:
-        # Obtenir le device du modèle
-        device = next(LLM_MODEL.parameters()).device
+        # Configuration des paramètres de génération pour VLLM
+        sampling_params = SamplingParams(
+            temperature=TEMPERATURE,
+            max_tokens=MAX_NEW_TOKENS,
+            stop=["```"],  # Arrêter lorsqu'on atteint la fin du bloc de code
+        )
         
-        # Déplacer les inputs sur le même device que le modèle
-        inputs = LLM_TOKENIZER(prompt, return_tensors="pt").to(device)
+        # Générer la réponse avec VLLM
+        logger.info(f"Génération de code avec VLLM pour la requête: {query}")
+        outputs = LLM_MODEL.generate(prompt, sampling_params)
         
-        # Générer le code Python en utilisant directement le modèle
-        with torch.no_grad():
-            outputs = LLM_MODEL.generate(
-                inputs.input_ids,
-                max_new_tokens=MAX_NEW_TOKENS,
-                temperature=TEMPERATURE,
-                do_sample=True,
-                pad_token_id=LLM_TOKENIZER.eos_token_id
-            )
+        # Récupérer le texte généré
+        generated_text = outputs[0].outputs[0].text
         
-        # Décoder la sortie
-        generated_text = LLM_TOKENIZER.decode(outputs[0], skip_special_tokens=True)
-
-        logger.info(f"🦾 Réponse générée par le modèle : {generated_text}")
-        
-        # Extraire uniquement la partie générée (sans le prompt)
-        generated_text = generated_text[len(prompt):]
+        logger.info(f"🦾 Réponse générée par le modèle via VLLM : {generated_text}")
         
         # Extraire le code Python
         python_code = extract_python_code(generated_text)
@@ -193,7 +203,7 @@ Génère uniquement le code Python:
         return python_code
     
     except Exception as e:
-        logger.error(f"Erreur lors de la génération du code Python: {str(e)}")
+        logger.error(f"Erreur lors de la génération du code Python avec VLLM: {str(e)}")
         raise Exception(f"Erreur lors de la génération du code Python: {str(e)}")
 
 def extract_python_code(text: str) -> str:
@@ -208,8 +218,10 @@ def extract_python_code(text: str) -> str:
     # Si pas de balises, prendre tout le texte
     return text.strip()
 
+# Le reste du code reste inchangé...
 def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
     """Exécute le code Python généré et retourne le résultat"""
+    # Votre code existant inchangé
     try:
         # Créer un DataFrame à partir des données Excel
         df = create_dataframe_from_excel_data(excel_data)
@@ -333,4 +345,3 @@ def analyze_with_llm(query: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
             "success": False,
             "error": str(e)
         }
-    

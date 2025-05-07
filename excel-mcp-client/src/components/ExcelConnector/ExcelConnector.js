@@ -3,7 +3,6 @@ import {
   checkLocalStatus, 
   getOpenWorkbooks, 
   readSheetData, 
-  analyzeSheetWithEmbedding,
   analyzeSheetWithLLM,
   submitLLMAnalysis,
   checkLLMTaskStatus
@@ -24,12 +23,9 @@ function ExcelConnector() {
   const [excelData, setExcelData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState(null);
   const [llmResults, setLlmResults] = useState(null);
-  const [topK, setTopK] = useState(5);
-  const [analysisMode, setAnalysisMode] = useState('embedding'); // 'embedding' ou 'llm'
   
-  // Nouveaux états pour le mode asynchrone
+  // États pour le mode asynchrone
   const [taskId, setTaskId] = useState(null);
   const [taskStatus, setTaskStatus] = useState(null);
   const [pollingCount, setPollingCount] = useState(0);
@@ -135,7 +131,6 @@ function ExcelConnector() {
     
     setLoading(true);
     setExcelData(null);
-    setResults(null);
     setLlmResults(null);
     setTaskId(null);
     setTaskStatus(null);
@@ -249,12 +244,11 @@ function ExcelConnector() {
     pollingIntervalRef.current = interval;
   };
   
-  // Analyser une feuille avec embedding ou soumettre une tâche LLM
+  // Soumettre une tâche LLM
   const handleAnalyze = async () => {
     if (!selectedWorkbook || !selectedSheet || !query.trim()) return;
     
     setLoading(true);
-    setResults(null);
     setLlmResults(null);
     setTaskId(null);
     setTaskStatus(null);
@@ -262,39 +256,23 @@ function ExcelConnector() {
     setStatus({...status, error: null});
     
     try {
-      if (analysisMode === 'embedding') {
-        // Analyse avec embedding - mode synchrone
-        const response = await analyzeSheetWithEmbedding(
-          selectedWorkbook, 
-          selectedSheet, 
-          query, 
-          topK
-        );
+      // Analyse avec LLM - mode asynchrone
+      const response = await submitLLMAnalysis(
+        selectedWorkbook,
+        selectedSheet,
+        query
+      );
+      
+      if (response && response.success && response.task_id) {
+        // Stocker l'ID de tâche
+        setTaskId(response.task_id);
+        setTaskStatus('pending');
+        setTaskSubmittedTime(Date.now());
         
-        if (response && response.success && response.result) {
-          setResults(response.result);
-        } else {
-          throw new Error(response?.error || "Erreur lors de l'analyse");
-        }
+        // Démarrer le polling pour vérifier l'état de la tâche
+        startTaskPolling(response.task_id);
       } else {
-        // Analyse avec LLM - mode asynchrone
-        const response = await submitLLMAnalysis(
-          selectedWorkbook,
-          selectedSheet,
-          query
-        );
-        
-        if (response && response.success && response.task_id) {
-          // Stocker l'ID de tâche
-          setTaskId(response.task_id);
-          setTaskStatus('pending');
-          setTaskSubmittedTime(Date.now());
-          
-          // Démarrer le polling pour vérifier l'état de la tâche
-          startTaskPolling(response.task_id);
-        } else {
-          throw new Error(response?.error || "Erreur lors de la soumission de l'analyse LLM");
-        }
+        throw new Error(response?.error || "Erreur lors de la soumission de l'analyse LLM");
       }
     } catch (error) {
       console.error('Erreur lors de l\'analyse:', error);
@@ -303,12 +281,6 @@ function ExcelConnector() {
         error: `Erreur lors de l'analyse: ${error.message}`
       });
       setLoading(false);
-    } finally {
-      // On ne termine pas le chargement ici pour le mode LLM, 
-      // car il se termine dans le polling lorsque la tâche est terminée
-      if (analysisMode === 'embedding') {
-        setLoading(false);
-      }
     }
   };
   
@@ -344,7 +316,6 @@ function ExcelConnector() {
     
     // Réinitialiser les données et résultats
     setExcelData(null);
-    setResults(null);
     setLlmResults(null);
     setTaskId(null);
     setTaskStatus(null);
@@ -355,17 +326,6 @@ function ExcelConnector() {
     setSelectedSheet(e.target.value);
     // Réinitialiser les données et résultats
     setExcelData(null);
-    setResults(null);
-    setLlmResults(null);
-    setTaskId(null);
-    setTaskStatus(null);
-  };
-  
-  // Changer de mode d'analyse
-  const handleAnalysisModeChange = (e) => {
-    setAnalysisMode(e.target.value);
-    // Réinitialiser les résultats
-    setResults(null);
     setLlmResults(null);
     setTaskId(null);
     setTaskStatus(null);
@@ -388,13 +348,17 @@ function ExcelConnector() {
   return (
     <div className="excel-connector">
       <header>
-        <h1>Excel Analyzer</h1>
+        <div className="header-content">
+          <h1>Excel Analyzer</h1>
+          <p className="app-subtitle">Analyse intelligente de vos données Excel</p>
+        </div>
         <button 
           className="refresh-button" 
           onClick={checkServerStatus}
           disabled={loading}
         >
-          Rafraîchir
+          <span className="button-icon">↻</span>
+          {loading ? 'Actualisation...' : 'Actualiser'}
         </button>
       </header>
       
@@ -419,8 +383,7 @@ function ExcelConnector() {
               <div 
                 className="progress-bar-inner" 
                 style={{ 
-                  width: taskStatus === 'processing' ? '50%' : '20%',
-                  animation: 'pulse 2s infinite'
+                  width: taskStatus === 'processing' ? '50%' : '20%'
                 }}
               ></div>
             </div>
@@ -480,6 +443,7 @@ function ExcelConnector() {
                   disabled={!selectedWorkbook || !selectedSheet || loading}
                   className="load-button"
                 >
+                  <span className="button-icon">↓</span>
                   Charger les données
                 </button>
               </>
@@ -496,75 +460,32 @@ function ExcelConnector() {
             )}
           </div>
           
-          <div className="options-panel">
-            <h2>Options d'analyse</h2>
-            
-            <div className="option-group">
-              <label>Mode d'analyse:</label>
-              <div className="radio-group">
-                <label>
-                  <input
-                    type="radio"
-                    name="analysisMode"
-                    value="embedding"
-                    checked={analysisMode === 'embedding'}
-                    onChange={handleAnalysisModeChange}
-                    disabled={loading}
-                  />
-                  Recherche par similarité
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="analysisMode"
-                    value="llm"
-                    checked={analysisMode === 'llm'}
-                    onChange={handleAnalysisModeChange}
-                    disabled={loading}
-                  />
-                  Analyse par IA (LLM)
-                </label>
+          <div className="file-stats">
+            <h2>Statistiques du fichier</h2>
+            <div className="stats-grid">
+              <div className="stat-item">
+                <div className="stat-label">Lignes</div>
+                <div className="stat-value">{excelData ? excelData.rowCount : '-'}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Colonnes</div>
+                <div className="stat-value">{excelData ? excelData.columnCount : '-'}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Feuille</div>
+                <div className="stat-value">{excelData ? excelData.sheetName : '-'}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-label">Classeur</div>
+                <div className="stat-value">{selectedWorkbook || '-'}</div>
               </div>
             </div>
-            
-            {analysisMode === 'embedding' && (
-              <div className="option-group">
-                <label>
-                  Nombre de résultats (top-k):
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max="20" 
-                    value={topK} 
-                    onChange={(e) => setTopK(Math.max(1, parseInt(e.target.value) || 1))}
-                    disabled={loading}
-                  />
-                </label>
-              </div>
-            )}
-            
-            {analysisMode === 'llm' && (
-              <div className="llm-info">
-                <p>L'analyse par IA peut prendre jusqu'à 2-3 minutes selon la complexité de la requête.</p>
-                <p>Vous pourrez continuer à utiliser l'application pendant le traitement.</p>
-              </div>
-            )}
           </div>
         </div>
         
         <div className="content-area">
           {excelData ? (
             <div className="data-explorer">
-              <div className="data-info">
-                <h2>Données chargées</h2>
-                <p>
-                  <strong>Classeur:</strong> {selectedWorkbook} | 
-                  <strong>Feuille:</strong> {excelData.sheetName} | 
-                  <strong>Lignes:</strong> {excelData.rowCount} | 
-                  <strong>Colonnes:</strong> {excelData.columnCount}
-                </p>
-              </div>
-              
               <div className="data-preview">
                 <h3>Aperçu des données</h3>
                 
@@ -599,20 +520,14 @@ function ExcelConnector() {
               </div>
               
               <div className="query-section">
-                <h3>
-                  {analysisMode === 'embedding' 
-                    ? "Rechercher des lignes similaires" 
-                    : "Poser une question sur ces données"}
-                </h3>
+                <h3>Poser une question sur ces données</h3>
                 
                 <div className="query-input">
                   <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={analysisMode === 'embedding' 
-                      ? "Ex: Quelles lignes contiennent des informations sur..." 
-                      : "Ex: Calcule la somme de la colonne Montant"}
+                    placeholder="Ex: Calcule la somme de la colonne Montant par catégorie"
                     disabled={loading}
                     onKeyPress={(e) => e.key === 'Enter' && handleAnalyze()}
                   />
@@ -621,50 +536,13 @@ function ExcelConnector() {
                     disabled={!query.trim() || loading}
                     className="analyze-button"
                   >
-                    {analysisMode === 'embedding' ? "Rechercher" : "Analyser"}
+                    <span className="button-icon">✨</span>
+                    Analyser
                   </button>
                 </div>
               </div>
               
-              {results && analysisMode === 'embedding' && (
-                <div className="results-section">
-                  <h3>Résultats de la recherche</h3>
-                  
-                  <div className="table-container">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th className="score-column">Score</th>
-                          <th className="row-index">Ligne</th>
-                          {results.headers.map((header, index) => (
-                            <th key={index}>{header}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {results.rows.map((row, rowIndex) => {
-                          const originalIndex = results.original_indices[rowIndex];
-                          const score = results.similarity_scores[originalIndex];
-                          
-                          return (
-                            <tr key={rowIndex} className={rowIndex === 0 ? "top-result" : ""}>
-                              <td className="similarity-score">
-                                {(score * 100).toFixed(2)}%
-                              </td>
-                              <td className="row-index">{originalIndex + 1}</td>
-                              {row.map((cell, cellIndex) => (
-                                <td key={cellIndex}>{cell !== null ? cell : ''}</td>
-                              ))}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-              
-              {llmResults && analysisMode === 'llm' && (
+              {llmResults && (
                 <div className="llm-results-section">
                   <h3>Résultat de l'analyse</h3>
                   
@@ -684,16 +562,33 @@ function ExcelConnector() {
           ) : (
             <div className="no-data-message">
               {workbooks.length > 0 ? (
-                "Sélectionnez un classeur et une feuille, puis cliquez sur 'Charger les données'"
+                <div className="no-data-content">
+                  <div className="no-data-icon">📊</div>
+                  <h3>Aucune donnée chargée</h3>
+                  <p>Sélectionnez un classeur et une feuille, puis cliquez sur 'Charger les données'</p>
+                </div>
               ) : (
-                status.excelRunning ? 
-                  "Aucun classeur Excel ouvert détecté" : 
-                  "Excel n'est pas en cours d'exécution"
+                <div className="no-data-content">
+                  <div className="no-data-icon">📑</div>
+                  <h3>{status.excelRunning ? "Aucun classeur Excel ouvert" : "Excel n'est pas en cours d'exécution"}</h3>
+                  <p>{status.excelRunning ? "Veuillez ouvrir un fichier Excel pour commencer" : "Veuillez lancer Excel et ouvrir un classeur"}</p>
+                </div>
               )}
             </div>
           )}
         </div>
       </div>
+      
+      <footer className="app-footer">
+        <div className="footer-content">
+          <p className="copyright">Excel Analyzer © {new Date().getFullYear()}</p>
+          <div className="footer-links">
+            <a href="#" className="footer-link">À propos</a>
+            <a href="#" className="footer-link">Documentation</a>
+            <a href="#" className="footer-link">Aide</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -39,10 +39,23 @@ async def get_status():
     embedding_status = get_embedding_status()
     llm_status = get_llm_status()
     
+    # Informations VLLM supplémentaires si disponible
+    vllm_info = {}
+    if llm_status.get("engine") == "VLLM" and llm_status.get("available"):
+        try:
+            vllm_info = {
+                "engine": "VLLM",
+                "version": "optimized",
+                "max_batch_size": 32,  # Par défaut dans VLLM
+                "tensor_parallel_size": 1  # Modifié si vous utilisez plusieurs GPUs
+            }
+        except:
+            pass
+    
     return {
         "status": "online",
         "embedding": embedding_status,
-        "llm": llm_status
+        "llm": {**llm_status, **vllm_info}
     }
 
 @app.post("/")

@@ -5,7 +5,7 @@ const LOCAL_AGENT_URL = 'http://localhost:8001';
 
 // URL du service RunPod qui fait tourner les modèles d'embedding et LLM
 // Utilisé en interne par l'agent local, pas directement par le frontend
-const RUNPOD_URL = 'https://iyxynrrrzdzatq-8001.proxy.runpod.net';
+const RUNPOD_URL = 'https://523ryay9qiglbv-8001.proxy.runpod.net';
 
 // Client API pour communiquer avec l'agent local
 const localApi = axios.create({

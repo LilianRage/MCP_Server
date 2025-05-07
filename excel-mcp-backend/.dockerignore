@@ -1,0 +1,40 @@
+# Contrôle de version
+.git
+.gitignore
+
+# Fichiers Python compilés
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+
+# Environnements virtuels
+.env
+.venv
+env/
+venv/
+
+# Dossiers de données volumineux
+excel_files/*
+model_cache/*
+.cache/*
+.huggingface/*
+
+# Logs et fichiers temporaires
+*.log
+.DS_Store
+
+# Documentation et tests
+docs/
+tests/
+README.md
+
+# Fichiers Docker
+.dockerignore
+docker-compose*.yml
+
+# Fichiers d'édition
+.idea/
+.vscode/
+*.swp
+*.swo
