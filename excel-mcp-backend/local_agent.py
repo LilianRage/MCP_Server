@@ -8,6 +8,8 @@ import xlwings as xw
 import requests
 import json
 import time
+from excel_processor_mcp import update_cell_value, update_range_values, execute_excel_formula, add_worksheet
+
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -25,7 +27,7 @@ app.add_middleware(
 )
 
 # URL de votre service RunPod - à modifier selon votre déploiement
-RUNPOD_API = "https://523ryay9qiglbv-8001.proxy.runpod.net"
+RUNPOD_API = "https://vtbpzmmhhx2ffm-8001.proxy.runpod.net"
 
 # Cache des tâches pour éviter les requêtes inutiles
 TASK_CACHE = {}
@@ -569,6 +571,228 @@ async def get_sheet_data(workbook, sheet):
             "success": False,
             "error": str(e)
         }
+
+
+
+
+@app.post("/update_cell")
+async def update_cell_endpoint(request: Request):
+    """Mettre à jour une cellule dans Excel"""
+    try:
+        data = await request.json()
+        workbook = data.get("workbook", "")
+        sheet = data.get("sheet", "")
+        cell = data.get("cell", "")
+        value = data.get("value", "")
+        
+        if not all([workbook, sheet, cell]):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants"}
+            )
+        
+        result = update_cell_value(workbook, sheet, cell, value)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la cellule: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.post("/update_range")
+async def update_range_endpoint(request: Request):
+    """Mettre à jour une plage de cellules dans Excel"""
+    try:
+        data = await request.json()
+        workbook = data.get("workbook", "")
+        sheet = data.get("sheet", "")
+        start_cell = data.get("start_cell", "")
+        values = data.get("values", [])
+        
+        if not all([workbook, sheet, start_cell]) or not isinstance(values, list):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants ou invalides"}
+            )
+        
+        result = update_range_values(workbook, sheet, start_cell, values)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la plage: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.post("/execute_formula")
+async def execute_formula_endpoint(request: Request):
+    """Exécuter une formule Excel dans une cellule"""
+    try:
+        data = await request.json()
+        workbook = data.get("workbook", "")
+        sheet = data.get("sheet", "")
+        cell = data.get("cell", "")
+        formula = data.get("formula", "")
+        
+        if not all([workbook, sheet, cell, formula]):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants"}
+            )
+        
+        result = execute_excel_formula(workbook, sheet, cell, formula)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de l'exécution de la formule: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.post("/add_sheet")
+async def add_sheet_endpoint(request: Request):
+    """Ajouter une nouvelle feuille dans un classeur Excel"""
+    try:
+        data = await request.json()
+        workbook = data.get("workbook", "")
+        sheet = data.get("sheet", "")
+        
+        if not all([workbook, sheet]):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants"}
+            )
+        
+        result = add_worksheet(workbook, sheet)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de l'ajout de la feuille: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.post("/modify_excel_with_llm")
+async def modify_excel_with_llm_endpoint(request: Request):
+    """Modifie Excel en utilisant une requête en langage naturel"""
+    try:
+        data = await request.json()
+        workbook = data.get("workbook", "")
+        sheet = data.get("sheet", "")
+        query = data.get("query", "")
+        
+        if not all([workbook, sheet, query]):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants"}
+            )
+        
+        # Lire les données Excel pour les envoyer au service RunPod
+        logger.info(f"Lecture des données Excel: workbook={workbook}, sheet={sheet}")
+        excel_data_response = await get_sheet_data(workbook, sheet)
+        
+        if not excel_data_response.get("success", False):
+            logger.error(f"La lecture de données a échoué: {excel_data_response.get('error')}")
+            return excel_data_response
+            
+        logger.info("La lecture de données a fonctionné")
+        excel_data = excel_data_response["result"]
+        
+        # Préparer le payload au format handler RunPod
+        handler_payload = {
+            "input": {
+                "command": "modify_excel_with_llm",  # Cette commande doit être ajoutée au handler côté RunPod
+                "params": {
+                    "query": query,
+                    "excel_data": excel_data
+                }
+            }
+        }
+        
+        # URL du handler
+        handler_url = f"{RUNPOD_API}/"
+        
+        logger.info(f"Envoi à RunPod (format handler): command=modify_excel_with_llm, query={query}")
+        
+        # Envoyer la requête au service RunPod
+        try:
+            runpod_response = requests.post(
+                handler_url,
+                json=handler_payload,
+                timeout=30
+            )
+            
+            logger.info(f"Réponse RunPod: statut={runpod_response.status_code}")
+            
+            if runpod_response.status_code != 200:
+                logger.error(f"Erreur RunPod: {runpod_response.text}")
+                return JSONResponse(
+                    status_code=runpod_response.status_code,
+                    content={"success": False, "error": f"Erreur du service RunPod: {runpod_response.text}"}
+                )
+            
+            # Récupérer les commandes générées (encapsulées dans 'output' avec le format handler)
+            response_json = runpod_response.json()
+            response_data = response_json.get("output", response_json)
+            
+            logger.info(f"Données de réponse: {response_data}")
+            
+            if not response_data.get("success", False):
+                return response_data
+                
+            # Exécuter les commandes LOCALEMENT avec xlwings
+            command_data = response_data.get("command", {})
+            command_type = command_data.get("command", "")
+            
+            logger.info(f"Commande à exécuter: type={command_type}, data={command_data}")
+            
+            if command_type == "update_cell":
+                result = update_cell_value(
+                    workbook, 
+                    sheet, 
+                    command_data.get("cell", ""), 
+                    command_data.get("value", "")
+                )
+            elif command_type == "execute_formula":
+                result = execute_excel_formula(
+                    workbook, 
+                    sheet, 
+                    command_data.get("cell", ""), 
+                    command_data.get("formula", "")
+                )
+            elif command_type == "update_range":
+                result = update_range_values(
+                    workbook, 
+                    sheet, 
+                    command_data.get("start_cell", ""), 
+                    command_data.get("values", [])
+                )
+            else:
+                return {
+                    "success": False,
+                    "error": f"Type de commande inconnu: {command_type}"
+                }
+            
+            # Ajouter les informations de commande au résultat
+            result["command_generated"] = command_data
+            result["query"] = query
+            
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erreur de communication avec RunPod: {str(e)}")
+            return JSONResponse(
+                status_code=503,
+                content={"success": False, "error": f"Erreur de communication avec RunPod: {str(e)}"}
+            )
+            
+    except Exception as e:
+        logger.error(f"Erreur lors de la modification Excel via LLM: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
 
 # Pour les tests locaux
 if __name__ == "__main__":

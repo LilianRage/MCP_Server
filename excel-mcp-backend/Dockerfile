@@ -7,7 +7,7 @@ ENV TORCH_COMPILE_DISABLE=1
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
-ENV HF_HOME=/app/.cache/huggingface
+ENV HF_HOME=/workspace/model_cache
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Paris
 ENV WINEARCH=win32
@@ -15,6 +15,14 @@ ENV WINEPREFIX=/root/.wine
 ENV DISPLAY=:99
 ENV MKL_SERVICE_FORCE_INTEL=1
 ENV MKL_THREADING_LAYER=GNU
+
+# Variables d'environnement pour le stockage persistant
+ENV TRANSFORMERS_CACHE=/workspace/model_cache
+ENV HF_HOME=/workspace/model_cache
+ENV XDG_CACHE_HOME=/workspace/model_cache
+ENV VLLM_CACHE_DIR=/workspace/model_cache/vllm
+
+RUN mkdir -p /workspace/model_cache
 
 # Répertoire de travail
 WORKDIR /app
@@ -72,7 +80,6 @@ RUN pip install --no-cache-dir fastapi==0.95.0
 RUN pip install --no-cache-dir uvicorn==0.21.0
 RUN pip install --no-cache-dir pydantic==1.10.11 python-multipart==0.0.6
 RUN pip install --no-cache-dir openpyxl==3.1.2
-#RUN pip install --no-cache-dir transformers==4.28.1
 RUN pip install --no-cache-dir transformers>=4.36.0
 RUN pip install --no-cache-dir sentence-transformers==2.2.2
 RUN pip install --no-cache-dir numpy pandas
@@ -81,10 +88,8 @@ RUN pip install --no-cache-dir xlwings>=0.30.0
 RUN pip install --no-cache-dir scikit-learn>=1.0.2
 RUN pip install --no-cache-dir accelerate>=0.25.0
 RUN pip install --no-cache-dir bitsandbytes>=0.41.0
-
 RUN pip install --no-cache-dir --timeout 1200 vllm>=0.2.0
 RUN pip install --no-cache-dir ray>=2.6.0
-
 RUN pip install --no-cache-dir protobuf>=3.20.0
 
 # Copie du code source
@@ -96,6 +101,11 @@ RUN chmod +x /app/entrypoint.sh
 # Script de démarrage pour RunPod dédié
 RUN echo '#!/bin/bash\n\
 set -e\n\
+\n\
+# Créer et configurer les répertoires pour le stockage du modèle\n\
+mkdir -p /workspace/model_cache/vllm\n\
+mkdir -p /workspace/model_cache/huggingface\n\
+chmod -R 777 /workspace/model_cache\n\
 \n\
 echo "🚀 Démarrage du service Excel MCP..."\n\
 echo "📚 Versions installées:"\n\

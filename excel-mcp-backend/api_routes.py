@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 import logging
 
 # Importer les modules MCP pour Excel
-from excel_processor_mcp import check_excel_status, get_open_workbooks, get_sheet_data
+from excel_processor_mcp import check_excel_status, get_open_workbooks, get_sheet_data,update_cell_value, update_range_values, execute_excel_formula, add_worksheet 
 from embedding_handler import retrieve_relevant_rows, get_embedding_status
 
 # Configuration du logging
@@ -96,6 +96,83 @@ async def analyze_with_embedding(
         }
     except Exception as e:
         logger.error(f"Erreur lors de l'analyse avec embedding: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+    
+
+
+
+
+
+
+
+@router.post("/mcp/update_cell")
+async def update_cell(
+    workbook: str,
+    sheet: str,
+    cell: str,
+    value: Any
+):
+    """Mettre à jour la valeur d'une cellule dans Excel"""
+    try:
+        result = update_cell_value(workbook, sheet, cell, value)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la cellule: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@router.post("/mcp/update_range")
+async def update_range(
+    workbook: str,
+    sheet: str,
+    start_cell: str,
+    data: List[List[Any]]
+):
+    """Mettre à jour une plage de cellules dans Excel"""
+    try:
+        result = update_range_values(workbook, sheet, start_cell, data)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la plage: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@router.post("/mcp/execute_formula")
+async def execute_formula(
+    workbook: str,
+    sheet: str,
+    cell: str,
+    formula: str
+):
+    """Exécuter une formule Excel dans une cellule"""
+    try:
+        result = execute_excel_formula(workbook, sheet, cell, formula)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de l'exécution de la formule: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@router.post("/mcp/add_sheet")
+async def add_sheet(
+    workbook: str,
+    sheet: str
+):
+    """Ajouter une nouvelle feuille dans un classeur Excel"""
+    try:
+        result = add_worksheet(workbook, sheet)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de l'ajout de la feuille: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": str(e)}

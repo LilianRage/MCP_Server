@@ -9,7 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 from embedding_handler import retrieve_relevant_rows, get_embedding_status
-from llm_handler import analyze_with_llm, get_llm_status
+from llm_handler import analyze_with_llm, get_llm_status, generate_excel_modification
+from excel_processor_mcp import (
+    update_cell_value,
+    update_range_values,
+    execute_excel_formula,
+    get_sheet_data
+)
+import json
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -89,6 +96,17 @@ async def run_pod_handler(request: Request):
             result = await submit_llm_task(params)
         elif command == "get_task_status":
             result = get_task_status(params.get("task_id"))
+        elif command == "modify_excel_with_llm":
+            query = params.get("query", "")
+            excel_data = params.get("excel_data", {})
+            
+            if not query or not excel_data:
+                result = {
+                    "success": False,
+                    "error": "Paramètres manquants: query et excel_data sont requis"
+                }
+            else:
+                result = generate_excel_modification(query, excel_data)
         else:
             result = {"success": False, "error": f"Commande inconnue: {command}"}
         
@@ -281,6 +299,8 @@ def cleanup_expired_tasks():
         logger.info(f"Suppression de la tâche expirée {task_id}")
         del TASKS[task_id]
 
+
+
 @app.post("/analyze_data")
 async def analyze_data_endpoint(request: Request):
     try:
@@ -311,6 +331,93 @@ async def submit_llm_task_endpoint(request: Request):
 @app.get("/task_status/{task_id}")
 async def task_status_endpoint(task_id: str):
     return get_task_status(task_id)
+
+
+
+
+
+
+
+
+
+
+
+@app.post("/update_excel_cell")
+async def update_excel_cell(request: Request):
+    """Mettre à jour une cellule dans Excel"""
+    try:
+        data = await request.json()
+        workbook = data.get("workbook", "")
+        sheet = data.get("sheet", "")
+        cell = data.get("cell", "")
+        value = data.get("value", "")
+        
+        if not all([workbook, sheet, cell]):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants"}
+            )
+        
+        result = update_cell_value(workbook, sheet, cell, value)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la cellule: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.post("/update_excel_range")
+async def update_excel_range(request: Request):
+    """Mettre à jour une plage de cellules dans Excel"""
+    try:
+        data = await request.json()
+        workbook = data.get("workbook", "")
+        sheet = data.get("sheet", "")
+        start_cell = data.get("start_cell", "")
+        values = data.get("values", [])
+        
+        if not all([workbook, sheet, start_cell]) or not isinstance(values, list):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants ou invalides"}
+            )
+        
+        result = update_range_values(workbook, sheet, start_cell, values)
+        return result
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la plage: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+@app.post("/modify_excel_with_llm")
+async def modify_excel_with_llm(request: Request):
+    """Génère les commandes pour modifier Excel en utilisant une requête en langage naturel"""
+    try:
+        data = await request.json()
+        query = data.get("query", "")
+        excel_data = data.get("excel_data", {})
+        
+        if not query or not excel_data:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Paramètres manquants: query et excel_data sont requis"}
+            )
+        
+        # Générer des commandes de modification avec le LLM - SEULEMENT générer, pas exécuter
+        commands = generate_excel_modification(query, excel_data)
+        
+        # Retourner simplement les commandes générées, sans tenter d'exécuter quoi que ce soit
+        return commands
+            
+    except Exception as e:
+        logger.error(f"Erreur lors de la génération de commandes Excel via LLM: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
 
 # Pour les tests locaux
 if __name__ == "__main__":

@@ -164,3 +164,233 @@ def get_sheet_data(workbook_name: str, sheet_name: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Erreur lors de la lecture des données Excel: {str(e)}")
         raise Exception(f"Erreur lors de la lecture des données Excel: {str(e)}")
+    
+
+
+    
+    
+def update_cell_value(workbook_name: str, sheet_name: str, cell_address: str, value: Any) -> Dict[str, Any]:
+    """
+    Met à jour la valeur d'une cellule spécifique dans une feuille Excel
+    
+    Args:
+        workbook_name: Nom du classeur Excel
+        sheet_name: Nom de la feuille
+        cell_address: Adresse de la cellule (ex: "A1", "B5")
+        value: Nouvelle valeur à placer dans la cellule
+        
+    Returns:
+        Dictionnaire avec le statut de l'opération
+    """
+    try:
+        app = get_excel_instance()
+        
+        # Trouver le classeur par son nom
+        wb = None
+        for book in app.books:
+            if book.name == workbook_name:
+                wb = book
+                break
+        
+        if wb is None:
+            raise Exception(f"Classeur non trouvé: {workbook_name}")
+        
+        # Trouver la feuille par son nom
+        ws = None
+        for sheet in wb.sheets:
+            if sheet.name == sheet_name:
+                ws = sheet
+                break
+        
+        if ws is None:
+            raise Exception(f"Feuille non trouvée: {sheet_name}")
+        
+        # Mettre à jour la cellule
+        ws.range(cell_address).value = value
+        
+        # Enregistrer les modifications
+        wb.save()
+        
+        return {
+            "success": True,
+            "message": f"Cellule {cell_address} mise à jour avec succès"
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la cellule: {str(e)}")
+        return {
+            "success": False, 
+            "error": str(e)
+        }
+
+def update_range_values(workbook_name: str, sheet_name: str, start_cell: str, data: List[List[Any]]) -> Dict[str, Any]:
+    """
+    Met à jour une plage de cellules avec de nouvelles valeurs
+    
+    Args:
+        workbook_name: Nom du classeur Excel
+        sheet_name: Nom de la feuille
+        start_cell: Cellule de départ (ex: "A1")
+        data: Liste de listes contenant les données à écrire
+        
+    Returns:
+        Dictionnaire avec le statut de l'opération
+    """
+    try:
+        app = get_excel_instance()
+        
+        # Trouver le classeur par son nom
+        wb = None
+        for book in app.books:
+            if book.name == workbook_name:
+                wb = book
+                break
+        
+        if wb is None:
+            raise Exception(f"Classeur non trouvé: {workbook_name}")
+        
+        # Trouver la feuille par son nom
+        ws = None
+        for sheet in wb.sheets:
+            if sheet.name == sheet_name:
+                ws = sheet
+                break
+        
+        if ws is None:
+            raise Exception(f"Feuille non trouvée: {sheet_name}")
+        
+        # Mettre à jour la plage de cellules
+        ws.range(start_cell).value = data
+        
+        # Enregistrer les modifications
+        wb.save()
+        
+        return {
+            "success": True,
+            "message": f"Plage de cellules mise à jour avec succès à partir de {start_cell}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de la plage de cellules: {str(e)}")
+        return {
+            "success": False, 
+            "error": str(e)
+        }
+
+def execute_excel_formula(workbook_name: str, sheet_name: str, cell_address: str, formula: str) -> Dict[str, Any]:
+    """
+    Exécute une formule Excel dans une cellule spécifique
+    
+    Args:
+        workbook_name: Nom du classeur Excel
+        sheet_name: Nom de la feuille
+        cell_address: Adresse de la cellule (ex: "A1", "B5")
+        formula: Formule Excel (doit commencer par "=")
+        
+    Returns:
+        Dictionnaire avec le statut de l'opération et le résultat
+    """
+    try:
+        app = get_excel_instance()
+        
+        # Trouver le classeur par son nom
+        wb = None
+        for book in app.books:
+            if book.name == workbook_name:
+                wb = book
+                break
+        
+        if wb is None:
+            raise Exception(f"Classeur non trouvé: {workbook_name}")
+        
+        # Trouver la feuille par son nom
+        ws = None
+        for sheet in wb.sheets:
+            if sheet.name == sheet_name:
+                ws = sheet
+                break
+        
+        if ws is None:
+            raise Exception(f"Feuille non trouvée: {sheet_name}")
+        
+        # S'assurer que la formule commence par "="
+        if not formula.startswith("="):
+            formula = "=" + formula
+            
+        # Appliquer la formule
+        ws.range(cell_address).formula = formula
+        
+        # Récupérer le résultat calculé
+        result = ws.range(cell_address).value
+        
+        # Enregistrer les modifications
+        wb.save()
+        
+        return {
+            "success": True,
+            "formula": formula,
+            "result": result,
+            "message": f"Formule appliquée avec succès à la cellule {cell_address}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'exécution de la formule: {str(e)}")
+        return {
+            "success": False, 
+            "error": str(e)
+        }
+
+def add_worksheet(workbook_name: str, sheet_name: str) -> Dict[str, Any]:
+    """
+    Ajoute une nouvelle feuille au classeur Excel
+    
+    Args:
+        workbook_name: Nom du classeur Excel
+        sheet_name: Nom de la nouvelle feuille
+        
+    Returns:
+        Dictionnaire avec le statut de l'opération
+    """
+    try:
+        app = get_excel_instance()
+        
+        # Trouver le classeur par son nom
+        wb = None
+        for book in app.books:
+            if book.name == workbook_name:
+                wb = book
+                break
+        
+        if wb is None:
+            raise Exception(f"Classeur non trouvé: {workbook_name}")
+        
+        # Vérifier si une feuille avec ce nom existe déjà
+        sheet_exists = False
+        for sheet in wb.sheets:
+            if sheet.name.lower() == sheet_name.lower():
+                sheet_exists = True
+                break
+        
+        if sheet_exists:
+            return {
+                "success": False,
+                "error": f"Une feuille nommée '{sheet_name}' existe déjà"
+            }
+        
+        # Ajouter une nouvelle feuille
+        new_sheet = wb.sheets.add(name=sheet_name)
+        
+        # Enregistrer les modifications
+        wb.save()
+        
+        return {
+            "success": True,
+            "message": f"Feuille '{sheet_name}' ajoutée avec succès"
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'ajout de la feuille: {str(e)}")
+        return {
+            "success": False, 
+            "error": str(e)
+        }

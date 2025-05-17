@@ -5,7 +5,8 @@ import {
   readSheetData, 
   analyzeSheetWithLLM,
   submitLLMAnalysis,
-  checkLLMTaskStatus
+  checkLLMTaskStatus,
+  modifyExcelWithLLM
 } from '../../services/api';
 import './ExcelConnector.css';
 
@@ -34,6 +35,12 @@ function ExcelConnector() {
   
   // Référence pour annuler le polling si le composant est démonté
   const pollingIntervalRef = useRef(null);
+
+  // Ajouter un état pour la modification
+  const [modifyQuery, setModifyQuery] = useState('');
+  const [modificationResult, setModificationResult] = useState(null);
+
+  
   
   // Vérifier la connexion et Excel au chargement
   useEffect(() => {
@@ -297,6 +304,36 @@ function ExcelConnector() {
     setPollingCount(0);
     setEstimatedTimeRemaining(null);
   };
+  // Fonction pour modifier Excel avec LLM
+  const handleModifyExcel = async () => {
+    if (!selectedWorkbook || !selectedSheet || !modifyQuery.trim()) return;
+    
+    setLoading(true);
+    setModificationResult(null);
+    
+    try {
+      const response = await modifyExcelWithLLM(selectedWorkbook, selectedSheet, modifyQuery);
+      
+      if (response && response.success) {
+        setModificationResult(response);
+        // Recharger les données après modification
+        await loadSheetData();
+      } else {
+        setStatus({
+          ...status,
+          error: response?.error || "Erreur lors de la modification Excel"
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la modification Excel:', error);
+      setStatus({
+        ...status,
+        error: `Erreur lors de la modification Excel: ${error.message}`
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Changer de classeur sélectionné
   const handleWorkbookChange = (e) => {
@@ -558,6 +595,52 @@ function ExcelConnector() {
                   )}
                 </div>
               )}
+              {excelData && (
+                <div className="modify-excel-section">
+                  <h3>Modifier les données Excel</h3>
+                  <p className="section-intro">
+                    Décrivez en langage naturel la modification que vous souhaitez apporter
+                  </p>
+                  
+                  <div className="modify-input">
+                    <input
+                      type="text"
+                      value={modifyQuery}
+                      onChange={(e) => setModifyQuery(e.target.value)}
+                      placeholder="Ex: Changer le prix en B5 à 150€"
+                      disabled={loading}
+                      onKeyPress={(e) => e.key === 'Enter' && handleModifyExcel()}
+                    />
+                    <button 
+                      onClick={handleModifyExcel} 
+                      disabled={!modifyQuery.trim() || loading}
+                      className="modify-button"
+                    >
+                      <span className="button-icon">✏️</span>
+                      Modifier
+                    </button>
+                  </div>
+                  
+                  {modificationResult && (
+                    <div className="modification-result">
+                      <h4>Modification effectuée</h4>
+                      <div className="result-details">
+                        <p><strong>Action réalisée:</strong> {modificationResult.command_generated?.command}</p>
+                        {modificationResult.command_generated?.cell && (
+                          <p><strong>Cellule modifiée:</strong> {modificationResult.command_generated.cell}</p>
+                        )}
+                        {modificationResult.command_generated?.value !== undefined && (
+                          <p><strong>Nouvelle valeur:</strong> {modificationResult.command_generated.value}</p>
+                        )}
+                        {modificationResult.command_generated?.formula && (
+                          <p><strong>Formule appliquée:</strong> {modificationResult.command_generated.formula}</p>
+                        )}
+                        <p className="success-message">{modificationResult.message}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="no-data-message">
@@ -591,6 +674,7 @@ function ExcelConnector() {
       </footer>
     </div>
   );
+  
 }
 
 export default ExcelConnector;

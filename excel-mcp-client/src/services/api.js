@@ -5,7 +5,7 @@ const LOCAL_AGENT_URL = 'http://localhost:8001';
 
 // URL du service RunPod qui fait tourner les modèles d'embedding et LLM
 // Utilisé en interne par l'agent local, pas directement par le frontend
-const RUNPOD_URL = 'https://523ryay9qiglbv-8001.proxy.runpod.net';
+const RUNPOD_URL = 'https://vtbpzmmhhx2ffm-8001.proxy.runpod.net';
 
 // Client API pour communiquer avec l'agent local
 const localApi = axios.create({
@@ -165,6 +165,131 @@ export const analyzeSheetWithLLM = async (workbook, sheet, query) => {
   }
 };
 
+/**
+ * Met à jour une cellule dans Excel
+ * @param {string} workbook - Nom du classeur
+ * @param {string} sheet - Nom de la feuille
+ * @param {string} cell - Adresse de la cellule (ex: "A1")
+ * @param {any} value - Nouvelle valeur
+ * @returns {Promise} - Résultat de l'opération
+ */
+export const updateExcelCell = async (workbook, sheet, cell, value) => {
+  try {
+    const response = await localApi.post('/update_cell', {
+      workbook: workbook,
+      sheet: sheet,
+      cell: cell,
+      value: value
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Cell update error:', error);
+    return {
+      success: false,
+      error: error.message || 'Erreur lors de la mise à jour de la cellule'
+    };
+  }
+};
+
+/**
+ * Met à jour une plage de cellules dans Excel
+ * @param {string} workbook - Nom du classeur
+ * @param {string} sheet - Nom de la feuille
+ * @param {string} startCell - Cellule de départ (ex: "A1")
+ * @param {Array} values - Tableau 2D de valeurs
+ * @returns {Promise} - Résultat de l'opération
+ */
+export const updateExcelRange = async (workbook, sheet, startCell, values) => {
+  try {
+    const response = await localApi.post('/update_range', {
+      workbook: workbook,
+      sheet: sheet,
+      start_cell: startCell,
+      values: values
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Range update error:', error);
+    return {
+      success: false,
+      error: error.message || 'Erreur lors de la mise à jour de la plage'
+    };
+  }
+};
+
+/**
+ * Exécute une formule Excel dans une cellule
+ * @param {string} workbook - Nom du classeur
+ * @param {string} sheet - Nom de la feuille
+ * @param {string} cell - Adresse de la cellule (ex: "A1")
+ * @param {string} formula - Formule Excel (ex: "=SUM(A1:A10)")
+ * @returns {Promise} - Résultat de l'opération
+ */
+export const executeExcelFormula = async (workbook, sheet, cell, formula) => {
+  try {
+    const response = await localApi.post('/execute_formula', {
+      workbook: workbook,
+      sheet: sheet,
+      cell: cell,
+      formula: formula
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Formula execution error:', error);
+    return {
+      success: false,
+      error: error.message || 'Erreur lors de l\'exécution de la formule'
+    };
+  }
+};
+
+/**
+ * Ajoute une nouvelle feuille à un classeur Excel
+ * @param {string} workbook - Nom du classeur
+ * @param {string} sheet - Nom de la nouvelle feuille
+ * @returns {Promise} - Résultat de l'opération
+ */
+export const addExcelSheet = async (workbook, sheet) => {
+  try {
+    const response = await localApi.post('/add_sheet', {
+      workbook: workbook,
+      sheet: sheet
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Sheet addition error:', error);
+    return {
+      success: false,
+      error: error.message || 'Erreur lors de l\'ajout de la feuille'
+    };
+  }
+};
+
+/**
+ * Modifie Excel en utilisant une requête en langage naturel
+ * Le LLM génère la commande à exécuter en fonction de la requête
+ * @param {string} workbook - Nom du classeur
+ * @param {string} sheet - Nom de la feuille
+ * @param {string} query - Requête en langage naturel
+ * @returns {Promise} - Résultat de l'opération
+ */
+export const modifyExcelWithLLM = async (workbook, sheet, query) => {
+  try {
+    const response = await localApi.post('/modify_excel_with_llm', {
+      workbook: workbook,
+      sheet: sheet,
+      query: query
+    });
+    return response.data;
+  } catch (error) {
+    console.error('LLM modification error:', error);
+    return {
+      success: false,
+      error: error.message || 'Erreur lors de la modification avec LLM'
+    };
+  }
+};
+
 // Exporter toutes les fonctions
 export default {
   checkLocalStatus,
@@ -173,5 +298,10 @@ export default {
   analyzeSheetWithEmbedding,
   analyzeSheetWithLLM,
   submitLLMAnalysis,
-  checkLLMTaskStatus
+  checkLLMTaskStatus,
+  updateExcelCell,
+  updateExcelRange,
+  executeExcelFormula,
+  addExcelSheet,
+  modifyExcelWithLLM
 };
