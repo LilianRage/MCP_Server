@@ -9,7 +9,7 @@ import {
   modifyExcelWithLLM
 } from '../../services/api';
 import './ExcelConnector.css';
-
+// Commentaire test
 function ExcelConnector() {
   // États pour les statuts et données
   const [status, setStatus] = useState({
