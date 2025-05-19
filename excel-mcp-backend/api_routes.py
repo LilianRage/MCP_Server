@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 
 # Importer les modules MCP pour Excel

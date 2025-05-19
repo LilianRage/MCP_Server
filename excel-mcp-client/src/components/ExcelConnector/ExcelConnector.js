@@ -587,12 +587,12 @@ function ExcelConnector() {
                     <pre className="result-text">{llmResults.result}</pre>
                   </div>
                   
-                  {llmResults.code && (
+                  {/*llmResults.code && (
                     <div className="code-container">
                       <h4>Code Python généré:</h4>
                       <pre className="python-code">{llmResults.code}</pre>
                     </div>
-                  )}
+                  )*/}
                 </div>
               )}
               {excelData && (
