@@ -27,7 +27,7 @@ app.add_middleware(
 )
 
 # URL de votre service RunPod - à modifier selon votre déploiement
-RUNPOD_API = "https://vtbpzmmhhx2ffm-8001.proxy.runpod.net"
+RUNPOD_API = "https://k994j50z5ge66t-8001.proxy.runpod.net"
 
 # Cache des tâches pour éviter les requêtes inutiles
 TASK_CACHE = {}

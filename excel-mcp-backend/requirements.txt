@@ -13,5 +13,8 @@ scikit-learn>=1.0.2
 numpy>=1.21.0
 pandas>=1.3.0
 
+# Bibliothèques de visualisation
+matplotlib>=3.5.0
+seaborn>=0.11.2
 vllm>=0.2.0
 ray>=2.6.0

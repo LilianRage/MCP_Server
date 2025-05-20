@@ -91,6 +91,8 @@ RUN pip install --no-cache-dir bitsandbytes>=0.41.0
 RUN pip install --no-cache-dir --timeout 1200 vllm>=0.2.0
 RUN pip install --no-cache-dir ray>=2.6.0
 RUN pip install --no-cache-dir protobuf>=3.20.0
+RUN pip install --no-cache-dir matplotlib>=3.5.0
+RUN pip install --no-cache-dir seaborn>=0.11.2
 
 # Copie du code source
 COPY . .

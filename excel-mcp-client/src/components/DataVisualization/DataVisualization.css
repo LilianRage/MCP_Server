@@ -1,0 +1,85 @@
+.visualization-container {
+  margin: 20px 0;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  background-color: #ffffff;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.visualization-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.visualization-header h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #24292e;
+}
+
+.visualization-description {
+  font-size: 13px;
+  color: #586069;
+  margin-bottom: 15px;
+}
+
+.visualization-image {
+  width: 100%;
+  max-width: 800px;
+  height: auto;
+  margin: 0 auto;
+  display: block;
+}
+
+.no-visualization {
+  text-align: center;
+  padding: 40px 20px;
+  color: #586069;
+  font-style: italic;
+}
+
+.visualization-toggle {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.toggle-button {
+  padding: 6px 12px;
+  font-size: 13px;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  background-color: #f6f8fa;
+  color: #24292e;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-button:hover {
+  background-color: #ebeff3;
+}
+
+.toggle-button.active {
+  background-color: #0366d6;
+  color: white;
+  border-color: #0366d6;
+}
+
+/* Animation d'apparition */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.visualization-container {
+  animation: fadeIn 0.3s ease-in-out;
+}

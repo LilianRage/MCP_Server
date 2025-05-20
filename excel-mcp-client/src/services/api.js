@@ -5,7 +5,7 @@ const LOCAL_AGENT_URL = 'http://localhost:8001';
 
 // URL du service RunPod qui fait tourner les modèles d'embedding et LLM
 // Utilisé en interne par l'agent local, pas directement par le frontend
-const RUNPOD_URL = 'https://vtbpzmmhhx2ffm-8001.proxy.runpod.net';
+const RUNPOD_URL = 'https://k994j50z5ge66t-8001.proxy.runpod.net';
 
 // Client API pour communiquer avec l'agent local
 const localApi = axios.create({
@@ -124,17 +124,30 @@ export const submitLLMAnalysis = async (workbook, sheet, query) => {
 /**
  * Vérifie le statut d'une tâche d'analyse LLM
  * @param {string} taskId - ID de la tâche à vérifier
- * @returns {Promise} - Statut de la tâche
+ * @returns {Promise} - Statut de la tâche et visualisations éventuelles
  */
 export const checkLLMTaskStatus = async (taskId) => {
   try {
     const response = await localApi.get(`/llm_task_status/${taskId}`);
-    return response.data;
+    const data = response.data;
+    
+    // Si la tâche est terminée et contient une visualisation, la transmettre au frontend
+    if (data.status === 'completed' && data.result && data.result.has_visualization) {
+      return {
+        ...data,
+        has_visualization: data.result.has_visualization,
+        visualization: data.result.visualization
+      };
+    }
+    
+    return data;
   } catch (error) {
     console.error('Task status check error:', error);
     return {
       success: false,
-      error: error.message || 'Erreur lors de la vérification du statut de la tâche'
+      error: error.message || 'Erreur lors de la vérification du statut de la tâche',
+      has_visualization: false,
+      visualization: null
     };
   }
 };

@@ -12,17 +12,24 @@ os.environ["VLLM_CACHE_DIR"] = "/workspace/model_cache/vllm"
 import logging
 import threading
 import torch
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple, Union
 import tempfile
 import pandas as pd
 import re
 import io
 import sys
 import contextlib
+import base64
 from transformers import AutoTokenizer
 import json
 # Nouvelle importation pour VLLM
 from vllm import LLM, SamplingParams
+
+# Importations pour les visualisations
+import matplotlib
+matplotlib.use('Agg')  # Utilisation du backend non-interactif
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,11 +49,28 @@ MAX_NEW_TOKENS = 2048
 TEMPERATURE = 0.1
 
 # Contexte pour les prompts
-SYSTEM_PROMPT = """Tu es un assistant d'analyse de données expert en Python pour pandas. 
-Ta tâche est de générer du code Python qui répond à des requêtes sur des données Excel. 
+SYSTEM_PROMPT = """Tu es un assistant d'analyse de données expert en Python pour pandas et les visualisations. 
+Ta tâche est de générer du code Python qui répond à des requêtes sur des données Excel.
+
+DETECTION D'INTENTION:
+1. Si la requête demande explicitement une visualisation (graphique, diagramme, tendance visuelle), ou pourrait bénéficier d'une représentation visuelle, tu DOIS générer une visualisation.
+2. Si la requête est purement factuelle (somme, comptage simple, statistique unique), tu ne dois PAS générer de visualisation.
+
+POUR LES VISUALISATIONS:
+- Pour les tendances temporelles ou évolutions: utilise un graphique linéaire (plt.plot).
+- Pour les comparaisons entre catégories: utilise un diagramme à barres (plt.bar).
+- Pour les répartitions proportionnelles: utilise un diagramme circulaire (plt.pie).
+- Utilise seaborn (sns) pour des visualisations plus avancées si nécessaire.
+- Sauvegarde TOUJOURS l'image avec: plt.savefig('/tmp/visualization.png', dpi=100, bbox_inches='tight')
+- IMPORTANT: Termine TOUJOURS par plt.close() pour libérer la mémoire.
+- N'affiche JAMAIS le graphique avec plt.show().
+
 Génère UNIQUEMENT du code Python sans aucune explication, commentaire ou texte supplémentaire.
-Le code doit être exécutable directement et imprimer les résultats.
-Utilise seulement pandas et les bibliothèques standard."""
+Le code doit être exécutable directement et imprimer les résultats textuels comme avant.
+Si tu génères une visualisation, tu dois aussi imprimer un résultat textuel pour assurer la compatibilité avec le système existant.
+
+IMPORTANT: matplotlib et seaborn sont déjà importés, n'importe jamais ces bibliothèques.
+"""
 
 def check_model_cache():
     """Vérifie si le modèle est déjà en cache"""
@@ -261,7 +285,15 @@ def extract_python_code(text: str) -> str:
 
 # Le reste du code reste inchangé...
 def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Exécute le code Python généré et retourne le résultat"""
+    """Exécute le code Python généré et retourne le résultat avec éventuellement une visualisation"""
+    visualization_path = '/tmp/visualization.png'
+    has_visualization = False
+    visualization_base64 = None
+    
+    # Supprimer toute visualisation précédente
+    if os.path.exists(visualization_path):
+        os.remove(visualization_path)
+    
     try:
         logger.info("=== EXÉCUTION CODE PYTHON ===")
         
@@ -271,10 +303,18 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
         # Nettoyer le code généré pour éviter les erreurs de syntaxe
         clean_code = code.replace("```python", "").replace("```", "").strip()
         
-        # Si le code ne contient pas d'import pandas, l'ajouter
+        # Préparer les imports nécessaires
+        imports = "import pandas as pd\n"
+        
+        # Vérifier si le code fait référence à des visualisations
+        needs_visualization = any(x in clean_code for x in ['plt.', 'sns.', '.plot(', '.hist(', 'savefig'])
+        
+        if needs_visualization:
+            logger.info("Visualisation détectée dans le code généré")
+        
+        # Assembler le code final
         if "import pandas" not in clean_code:
-            final_code = "import pandas as pd\n\n" + clean_code
-            logger.info("Ajout de 'import pandas as pd' au code")
+            final_code = imports + "\n" + clean_code
         else:
             final_code = clean_code
         
@@ -287,18 +327,36 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
         try:
             logger.info("Tentative d'exécution...")
             with contextlib.redirect_stdout(output):
-                # Créer un environnement d'exécution
-                exec_globals = {'pd': pd, 'df': df}
+                # Créer un environnement d'exécution avec matplotlib et seaborn
+                exec_globals = {
+                    'pd': pd, 
+                    'df': df, 
+                    'plt': plt, 
+                    'sns': sns,
+                    'np': np
+                }
                 exec(final_code, exec_globals)
             
             # Récupérer la sortie
             result = output.getvalue()
             logger.info(f"Exécution réussie! Résultat: {result}")
             
+            # Vérifier si une visualisation a été générée
+            if os.path.exists(visualization_path):
+                logger.info("Visualisation détectée dans /tmp/visualization.png")
+                has_visualization = True
+                with open(visualization_path, 'rb') as img_file:
+                    visualization_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+                    
+                # Facultatif: supprimer le fichier après l'avoir lu
+                os.remove(visualization_path)
+            
             return {
                 "success": True,
                 "code": clean_code,
                 "result": result,
+                "has_visualization": has_visualization,
+                "visualization": visualization_base64,
                 "error": None
             }
         
@@ -327,10 +385,22 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
                 result = output.getvalue()
                 logger.info(f"Exécution avec format='mixed' réussie! Résultat: {result}")
                 
+                # Vérifier si une visualisation a été générée après correction
+                if os.path.exists(visualization_path):
+                    logger.info("Visualisation détectée après correction")
+                    has_visualization = True
+                    with open(visualization_path, 'rb') as img_file:
+                        visualization_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+                        
+                    # Facultatif: supprimer le fichier après l'avoir lu
+                    os.remove(visualization_path)
+                
                 return {
                     "success": True,
                     "code": fixed_code,
                     "result": result,
+                    "has_visualization": has_visualization,
+                    "visualization": visualization_base64,
                     "error": None
                 }
             else:
@@ -339,6 +409,8 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
                     "success": False,
                     "code": final_code,
                     "result": f"L'exécution du code a échoué: {str(exec_e)}",
+                    "has_visualization": False,
+                    "visualization": None,
                     "error": str(exec_e)
                 }
     
@@ -348,21 +420,26 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
             "success": False,
             "code": code,
             "result": f"Erreur lors de l'exécution: {str(e)}",
+            "has_visualization": False,
+            "visualization": None,
             "error": str(e)
         }
     finally:
+        # S'assurer que toutes les figures matplotlib sont fermées
+        plt.close('all')
         logger.info("=== FIN EXÉCUTION CODE PYTHON ===")
 
 def analyze_with_llm(query: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyse les données Excel avec un LLM et du code Python généré
+    Peut également générer des visualisations si approprié
     
     Args:
         query: Requête utilisateur en langage naturel
         excel_data: Données Excel (headers, rows, etc.)
         
     Returns:
-        Résultat de l'analyse
+        Résultat de l'analyse avec visualisation optionnelle
     """
     try:
         # Vérifier que le modèle est chargé
@@ -372,24 +449,44 @@ def analyze_with_llm(query: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
                 "error": "Le modèle LLM n'est pas disponible ou n'est pas chargé"
             }
         
+        # Détecter si la requête pourrait nécessiter une visualisation
+        visualization_keywords = [
+            "graphique", "graph", "plot", "visualise", "visualiser", "visualisation",
+            "affiche", "montre", "représente", "tendance", "évolution", "historique",
+            "comparer", "comparaison", "répartition", "distribution", "courbe", "histogramme",
+            "camembert", "diagramme", "barre", "pie chart", "bar chart", "line chart"
+        ]
+        
+        might_need_visualization = any(keyword in query.lower() for keyword in visualization_keywords)
+        
+        if might_need_visualization:
+            logger.info(f"La requête '{query}' pourrait nécessiter une visualisation")
+        
         # Générer le code Python
         python_code = generate_python_code(query, excel_data)
         
         # Exécuter le code Python
         result = execute_python_code(python_code, excel_data)
         
-        return {
+        # Construire la réponse en incluant les informations de visualisation
+        response = {
             "success": result["success"],
             "code": result["code"],
             "result": result["result"],
-            "error": result["error"]
+            "error": result["error"],
+            "has_visualization": result.get("has_visualization", False),
+            "visualization": result.get("visualization")
         }
+        
+        return response
     
     except Exception as e:
         logger.error(f"Erreur lors de l'analyse avec LLM: {str(e)}")
         return {
             "success": False,
-            "error": str(e)
+            "error": str(e),
+            "has_visualization": False,
+            "visualization": None
         }
     
 def generate_excel_modification(query: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -8,6 +8,7 @@ import {
   checkLLMTaskStatus,
   modifyExcelWithLLM
 } from '../../services/api';
+import DataVisualization from '../DataVisualization/DataVisualization';
 import './ExcelConnector.css';
 // Commentaire test
 function ExcelConnector() {
@@ -39,6 +40,11 @@ function ExcelConnector() {
   // Ajouter un état pour la modification
   const [modifyQuery, setModifyQuery] = useState('');
   const [modificationResult, setModificationResult] = useState(null);
+  
+  // Nouveaux états pour les visualisations
+  const [hasVisualization, setHasVisualization] = useState(false);
+  const [visualizationData, setVisualizationData] = useState(null);
+  const [visualizationTitle, setVisualizationTitle] = useState("Visualisation des données");
 
   
   
@@ -176,6 +182,10 @@ function ExcelConnector() {
     
     setPollingCount(0);
     
+    // Réinitialiser les états de visualisation
+    setHasVisualization(false);
+    setVisualizationData(null);
+    
     // Démarrer un nouveau polling
     const interval = setInterval(async () => {
       try {
@@ -192,6 +202,20 @@ function ExcelConnector() {
           if (response.status === 'completed' && response.result) {
             clearInterval(interval);
             pollingIntervalRef.current = null;
+            
+            // Vérifier s'il y a une visualisation dans le résultat
+            if (response.has_visualization && response.visualization) {
+              console.log("Visualisation détectée dans la réponse");
+              setHasVisualization(true);
+              setVisualizationData(response.visualization);
+              setVisualizationTitle("Visualisation pour: " + query);
+            } else {
+              // Réinitialiser l'état de visualisation si aucune visualisation n'est présente
+              setHasVisualization(false);
+              setVisualizationData(null);
+            }
+            
+            // Définir les résultats textuels comme avant
             setLlmResults(response.result);
             setLoading(false);
           }
@@ -204,6 +228,10 @@ function ExcelConnector() {
               error: response.error || "L'analyse a échoué"
             });
             setLoading(false);
+            
+            // Réinitialiser l'état de visualisation en cas d'erreur
+            setHasVisualization(false);
+            setVisualizationData(null);
           }
           // Mettre à jour le temps estimé restant
           else if (response.status === 'processing' || response.status === 'pending') {
@@ -586,6 +614,15 @@ function ExcelConnector() {
                   <div className="result-container">
                     <pre className="result-text">{llmResults.result}</pre>
                   </div>
+                  
+                  {/* Affichage de la visualisation si disponible */}
+                  {hasVisualization && visualizationData && (
+                    <DataVisualization 
+                      base64Image={visualizationData} 
+                      title={visualizationTitle}
+                      description="Cette visualisation a été générée automatiquement en fonction de votre requête."
+                    />
+                  )}
                   
                   {/*llmResults.code && (
                     <div className="code-container">
