@@ -1,8 +1,24 @@
 import os
 import numpy as np
+import json
+import pandas as pd
+from json import JSONEncoder
 
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 os.environ['MKL_THREADING_LAYER'] = 'GNU'
+
+# Classe personnalisée pour la sérialisation JSON des objets pandas Timestamp
+class PandasJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if hasattr(obj, 'isoformat'):
+            return obj.isoformat()
+        elif hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        elif hasattr(obj, 'tolist'):
+            return obj.tolist()
+        elif pd.isna(obj):
+            return None
+        return JSONEncoder.default(self, obj)
 
 #Storage
 os.environ["TRANSFORMERS_CACHE"] = "/workspace/model_cache"
@@ -49,27 +65,65 @@ MAX_NEW_TOKENS = 2048
 TEMPERATURE = 0.1
 
 # Contexte pour les prompts
-SYSTEM_PROMPT = """Tu es un assistant d'analyse de données expert en Python pour pandas et les visualisations. 
-Ta tâche est de générer du code Python qui répond à des requêtes sur des données Excel.
+SYSTEM_PROMPT = """Tu es un assistant d'analyse de données expert en Python pour pandas et l'extraction de données pour visualisations. 
+Ta tâche est de générer du code Python qui répond à des requêtes sur des données Excel ET extrait les données structurées 
+pour des visualisations interactives.
 
 DETECTION D'INTENTION:
-1. Si la requête demande explicitement une visualisation (graphique, diagramme, tendance visuelle), ou pourrait bénéficier d'une représentation visuelle, tu DOIS générer une visualisation.
-2. Si la requête est purement factuelle (somme, comptage simple, statistique unique), tu ne dois PAS générer de visualisation.
+1. Si la requête demande explicitement une visualisation (graphique, diagramme, tendance visuelle), ou pourrait bénéficier d'une représentation visuelle, tu DOIS extraire les données structurées pour cette visualisation.
+2. Si la requête est purement factuelle (somme, comptage simple, statistique unique), tu dois quand même formater les résultats de manière structurée.
 
-POUR LES VISUALISATIONS:
-- Pour les tendances temporelles ou évolutions: utilise un graphique linéaire (plt.plot).
-- Pour les comparaisons entre catégories: utilise un diagramme à barres (plt.bar).
-- Pour les répartitions proportionnelles: utilise un diagramme circulaire (plt.pie).
-- Utilise seaborn (sns) pour des visualisations plus avancées si nécessaire.
-- Sauvegarde TOUJOURS l'image avec: plt.savefig('/tmp/visualization.png', dpi=100, bbox_inches='tight')
-- IMPORTANT: Termine TOUJOURS par plt.close() pour libérer la mémoire.
-- N'affiche JAMAIS le graphique avec plt.show().
+POUR L'EXTRACTION DE DONNÉES:
+- Pour les tendances temporelles ou évolutions: extrais les paires de valeurs (x,y) dans une liste de dictionnaires.
+- Pour les comparaisons entre catégories: extrais les paires (catégorie, valeur) dans une liste de dictionnaires.
+- Pour les répartitions proportionnelles: extrais les paires (nom, valeur) dans une liste de dictionnaires.
+- Pour les statistiques: organise les résultats dans un tableau structuré avec libellés et valeurs.
 
-Génère UNIQUEMENT du code Python sans aucune explication, commentaire ou texte supplémentaire.
-Le code doit être exécutable directement et imprimer les résultats textuels comme avant.
-Si tu génères une visualisation, tu dois aussi imprimer un résultat textuel pour assurer la compatibilité avec le système existant.
+SPÉCIFICATIONS TECHNIQUES:
+- Tu dois TOUJOURS créer une variable spéciale nommée 'visualization_data' qui contient un dictionnaire avec la structure suivante:
+{
+  "visualization_type": "line"|"bar"|"pie"|"stats",
+  "title": "Titre du graphique",
+  "data": [ {}, {}, ... ],
+  "x_axis": {"key": "nom_clé_x", "label": "Libellé axe X"},
+  "y_axis": {"key": "nom_clé_y", "label": "Libellé axe Y"}
+}
 
-IMPORTANT: matplotlib et seaborn sont déjà importés, n'importe jamais ces bibliothèques.
+- Le champ 'visualization_type' doit être l'un des suivants:
+  * "line" pour les graphiques linéaires (tendances/évolutions)
+  * "bar" pour les diagrammes à barres (comparaisons)
+  * "pie" pour les diagrammes circulaires (répartitions)
+  * "stats" pour les tableaux de statistiques
+
+- Pour les graphiques linéaires et à barres:
+  * La liste 'data' contient des objets avec au moins les clés correspondant aux axes x et y
+  * 'x_axis' et 'y_axis' doivent spécifier la clé d'accès aux données ('key') et le libellé de l'axe ('label')
+
+- Pour les diagrammes circulaires:
+  * La liste 'data' contient des objets avec au moins 'name' et 'value'
+
+- Pour les statistiques:
+  * La liste 'data' contient des objets avec 'label' et 'value'
+
+EXEMPLE DE STRUCTURE POUR CHAQUE TYPE:
+Pour un graphique linéaire (évolution temporelle):
+visualization_data = {
+  "visualization_type": "line",
+  "title": "Évolution des ventes",
+  "data": [
+    {"month": "Jan", "sales": 40},
+    {"month": "Feb", "sales": 60},
+    {"month": "Mar", "sales": 45}
+  ],
+  "x_axis": {"key": "month", "label": "Mois"},
+  "y_axis": {"key": "sales", "label": "Ventes (€)"}
+}
+
+Génère UNIQUEMENT du code Python sans explication, commentaire ou texte supplémentaire.
+Le code doit être exécutable directement et imprimer les résultats textuels comme avant pour assurer la compatibilité.
+Tu dois TOUJOURS définir la variable 'visualization_data' en plus d'imprimer les résultats textuels.
+
+IMPORTANT: N'importe jamais matplotlib ou seaborn.
 """
 
 def check_model_cache():
@@ -285,10 +339,13 @@ def extract_python_code(text: str) -> str:
 
 # Le reste du code reste inchangé...
 def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Exécute le code Python généré et retourne le résultat avec éventuellement une visualisation"""
+    """Exécute le code Python généré et retourne le résultat avec éventuellement des données de visualisation"""
+    # Garder la rétrocompatibilité avec le système de visualisation basé sur des images
     visualization_path = '/tmp/visualization.png'
     has_visualization = False
     visualization_base64 = None
+    visualization_data = None
+    has_structured_data = False
     
     # Supprimer toute visualisation précédente
     if os.path.exists(visualization_path):
@@ -304,13 +361,18 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
         clean_code = code.replace("```python", "").replace("```", "").strip()
         
         # Préparer les imports nécessaires
-        imports = "import pandas as pd\n"
+        imports = "import pandas as pd\nimport json\n"
         
-        # Vérifier si le code fait référence à des visualisations
-        needs_visualization = any(x in clean_code for x in ['plt.', 'sns.', '.plot(', '.hist(', 'savefig'])
+        # Vérifier si le code contient des références à visualization_data
+        interactive_visualization = 'visualization_data' in clean_code
         
-        if needs_visualization:
-            logger.info("Visualisation détectée dans le code généré")
+        # Vérifier si le code fait référence à des visualisations matplotlib (rétrocompatibilité)
+        legacy_visualization = any(x in clean_code for x in ['plt.', 'sns.', '.plot(', '.hist(', 'savefig'])
+        
+        if interactive_visualization:
+            logger.info("Données structurées pour visualisation interactive détectées dans le code")
+        elif legacy_visualization:
+            logger.info("Visualisation matplotlib obsolète détectée dans le code - mode de compatibilité")
         
         # Assembler le code final
         if "import pandas" not in clean_code:
@@ -327,13 +389,14 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
         try:
             logger.info("Tentative d'exécution...")
             with contextlib.redirect_stdout(output):
-                # Créer un environnement d'exécution avec matplotlib et seaborn
+                # Créer un environnement d'exécution
                 exec_globals = {
                     'pd': pd, 
                     'df': df, 
                     'plt': plt, 
                     'sns': sns,
-                    'np': np
+                    'np': np,
+                    'json': json
                 }
                 exec(final_code, exec_globals)
             
@@ -341,9 +404,15 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
             result = output.getvalue()
             logger.info(f"Exécution réussie! Résultat: {result}")
             
-            # Vérifier si une visualisation a été générée
+            # Vérifier si des données structurées ont été générées
+            if 'visualization_data' in exec_globals:
+                has_structured_data = True
+                visualization_data = exec_globals['visualization_data']
+                logger.info(f"Données structurées extraites: {json.dumps(visualization_data, cls=PandasJSONEncoder)}")
+            
+            # Rétrocompatibilité: vérifier si une visualisation matplotlib a été générée
             if os.path.exists(visualization_path):
-                logger.info("Visualisation détectée dans /tmp/visualization.png")
+                logger.info("Visualisation matplotlib détectée dans /tmp/visualization.png")
                 has_visualization = True
                 with open(visualization_path, 'rb') as img_file:
                     visualization_base64 = base64.b64encode(img_file.read()).decode('utf-8')
@@ -357,6 +426,8 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
                 "result": result,
                 "has_visualization": has_visualization,
                 "visualization": visualization_base64,
+                "has_structured_data": has_structured_data,
+                "visualization_data": visualization_data,
                 "error": None
             }
         
@@ -385,9 +456,15 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
                 result = output.getvalue()
                 logger.info(f"Exécution avec format='mixed' réussie! Résultat: {result}")
                 
-                # Vérifier si une visualisation a été générée après correction
+                # Vérifier si des données structurées ont été générées après correction
+                if 'visualization_data' in exec_globals:
+                    has_structured_data = True
+                    visualization_data = exec_globals['visualization_data']
+                    logger.info(f"Données structurées extraites après correction: {json.dumps(visualization_data, cls=PandasJSONEncoder)}")
+                
+                # Rétrocompatibilité: vérifier si une visualisation a été générée après correction
                 if os.path.exists(visualization_path):
-                    logger.info("Visualisation détectée après correction")
+                    logger.info("Visualisation matplotlib détectée après correction")
                     has_visualization = True
                     with open(visualization_path, 'rb') as img_file:
                         visualization_base64 = base64.b64encode(img_file.read()).decode('utf-8')
@@ -401,6 +478,8 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
                     "result": result,
                     "has_visualization": has_visualization,
                     "visualization": visualization_base64,
+                    "has_structured_data": has_structured_data,
+                    "visualization_data": visualization_data,
                     "error": None
                 }
             else:
@@ -411,6 +490,8 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
                     "result": f"L'exécution du code a échoué: {str(exec_e)}",
                     "has_visualization": False,
                     "visualization": None,
+                    "has_structured_data": False,
+                    "visualization_data": None,
                     "error": str(exec_e)
                 }
     
@@ -422,6 +503,8 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
             "result": f"Erreur lors de l'exécution: {str(e)}",
             "has_visualization": False,
             "visualization": None,
+            "has_structured_data": False,
+            "visualization_data": None,
             "error": str(e)
         }
     finally:
@@ -432,14 +515,14 @@ def execute_python_code(code: str, excel_data: Dict[str, Any]) -> Dict[str, Any]
 def analyze_with_llm(query: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyse les données Excel avec un LLM et du code Python généré
-    Peut également générer des visualisations si approprié
+    Peut générer des visualisations interactives ou statiques selon le contexte
     
     Args:
         query: Requête utilisateur en langage naturel
         excel_data: Données Excel (headers, rows, etc.)
         
     Returns:
-        Résultat de l'analyse avec visualisation optionnelle
+        Résultat de l'analyse avec données de visualisation structurées ou image base64
     """
     try:
         # Vérifier que le modèle est chargé
@@ -474,8 +557,12 @@ def analyze_with_llm(query: str, excel_data: Dict[str, Any]) -> Dict[str, Any]:
             "code": result["code"],
             "result": result["result"],
             "error": result["error"],
+            # Rétrocompatibilité: visualisation matplotlib/seaborn
             "has_visualization": result.get("has_visualization", False),
-            "visualization": result.get("visualization")
+            "visualization": result.get("visualization"),
+            # Nouvelles données structurées pour visualisations interactives
+            "has_structured_data": result.get("has_structured_data", False),
+            "visualization_data": result.get("visualization_data")
         }
         
         return response

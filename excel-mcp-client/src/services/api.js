@@ -5,7 +5,7 @@ const LOCAL_AGENT_URL = 'http://localhost:8001';
 
 // URL du service RunPod qui fait tourner les modèles d'embedding et LLM
 // Utilisé en interne par l'agent local, pas directement par le frontend
-const RUNPOD_URL = 'https://k994j50z5ge66t-8001.proxy.runpod.net';
+const RUNPOD_URL = 'https://7yg89rdzg30tkn-8001.proxy.runpod.net';
 
 // Client API pour communiquer avec l'agent local
 const localApi = axios.create({
@@ -124,19 +124,24 @@ export const submitLLMAnalysis = async (workbook, sheet, query) => {
 /**
  * Vérifie le statut d'une tâche d'analyse LLM
  * @param {string} taskId - ID de la tâche à vérifier
- * @returns {Promise} - Statut de la tâche et visualisations éventuelles
+ * @returns {Promise} - Statut de la tâche et visualisations (structurées ou base64) éventuelles
  */
 export const checkLLMTaskStatus = async (taskId) => {
   try {
     const response = await localApi.get(`/llm_task_status/${taskId}`);
     const data = response.data;
     
-    // Si la tâche est terminée et contient une visualisation, la transmettre au frontend
-    if (data.status === 'completed' && data.result && data.result.has_visualization) {
+    // Si la tâche est terminée et contient un résultat
+    if (data.status === 'completed' && data.result) {
+      // Construire la réponse avec tous les types de visualisation possibles
       return {
         ...data,
-        has_visualization: data.result.has_visualization,
-        visualization: data.result.visualization
+        // Données structurées pour visualisations interactives
+        has_structured_data: data.result.has_structured_data || false,
+        visualization_data: data.result.visualization_data || null,
+        // Rétrocompatibilité: visualisations base64
+        has_visualization: data.result.has_visualization || false,
+        visualization: data.result.visualization || null
       };
     }
     
@@ -147,7 +152,9 @@ export const checkLLMTaskStatus = async (taskId) => {
       success: false,
       error: error.message || 'Erreur lors de la vérification du statut de la tâche',
       has_visualization: false,
-      visualization: null
+      visualization: null,
+      has_structured_data: false,
+      visualization_data: null
     };
   }
 };

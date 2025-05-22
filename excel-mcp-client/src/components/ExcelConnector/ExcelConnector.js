@@ -9,8 +9,8 @@ import {
   modifyExcelWithLLM
 } from '../../services/api';
 import DataVisualization from '../DataVisualization/DataVisualization';
+import ReactChartsVisualization from '../ReactCharts/ReactChartsVisualization';
 import './ExcelConnector.css';
-// Commentaire test
 function ExcelConnector() {
   // États pour les statuts et données
   const [status, setStatus] = useState({
@@ -41,10 +41,14 @@ function ExcelConnector() {
   const [modifyQuery, setModifyQuery] = useState('');
   const [modificationResult, setModificationResult] = useState(null);
   
-  // Nouveaux états pour les visualisations
+  // États pour les visualisations
   const [hasVisualization, setHasVisualization] = useState(false);
   const [visualizationData, setVisualizationData] = useState(null);
   const [visualizationTitle, setVisualizationTitle] = useState("Visualisation des données");
+  
+  // États pour les visualisations interactives
+  const [hasStructuredData, setHasStructuredData] = useState(false);
+  const [structuredVisualizationData, setStructuredVisualizationData] = useState(null);
 
   
   
@@ -185,6 +189,8 @@ function ExcelConnector() {
     // Réinitialiser les états de visualisation
     setHasVisualization(false);
     setVisualizationData(null);
+    setHasStructuredData(false);
+    setStructuredVisualizationData(null);
     
     // Démarrer un nouveau polling
     const interval = setInterval(async () => {
@@ -203,16 +209,30 @@ function ExcelConnector() {
             clearInterval(interval);
             pollingIntervalRef.current = null;
             
-            // Vérifier s'il y a une visualisation dans le résultat
-            if (response.has_visualization && response.visualization) {
-              console.log("Visualisation détectée dans la réponse");
+            // Vérifier s'il y a des données structurées pour une visualisation interactive
+            if (response.has_structured_data && response.visualization_data) {
+              console.log("Données structurées détectées dans la réponse");
+              setHasStructuredData(true);
+              setStructuredVisualizationData(response.visualization_data);
+              // La méthode moderne est préférée, donc désactiver l'ancienne visualisation
+              setHasVisualization(false);
+              setVisualizationData(null);
+            } 
+            // Sinon, vérifier s'il y a une visualisation base64 classique
+            else if (response.has_visualization && response.visualization) {
+              console.log("Visualisation base64 détectée dans la réponse");
               setHasVisualization(true);
               setVisualizationData(response.visualization);
               setVisualizationTitle("Visualisation pour: " + query);
+              // Pas de données structurées
+              setHasStructuredData(false);
+              setStructuredVisualizationData(null);
             } else {
-              // Réinitialiser l'état de visualisation si aucune visualisation n'est présente
+              // Réinitialiser tous les états de visualisation si aucune visualisation n'est présente
               setHasVisualization(false);
               setVisualizationData(null);
+              setHasStructuredData(false);
+              setStructuredVisualizationData(null);
             }
             
             // Définir les résultats textuels comme avant
@@ -615,7 +635,15 @@ function ExcelConnector() {
                     <pre className="result-text">{llmResults.result}</pre>
                   </div>
                   
-                  {/* Affichage de la visualisation si disponible */}
+                  {/* Affichage de la visualisation interactive si des données structurées sont disponibles */}
+                  {hasStructuredData && structuredVisualizationData && (
+                    <ReactChartsVisualization 
+                      data={structuredVisualizationData} 
+                      title={`Visualisation pour: ${query}`}
+                    />
+                  )}
+                  
+                  {/* Affichage de la visualisation statique base64 si disponible (rétrocompatibilité) */}
                   {hasVisualization && visualizationData && (
                     <DataVisualization 
                       base64Image={visualizationData} 

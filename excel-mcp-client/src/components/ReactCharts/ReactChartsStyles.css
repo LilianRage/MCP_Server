@@ -1,0 +1,101 @@
+.recharts-visualization-container {
+  margin: 20px 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background-color: #fff;
+}
+
+.recharts-visualization-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #f7f9fc;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.recharts-visualization-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.recharts-visualization-content {
+  padding: 16px;
+}
+
+.recharts-component-wrapper {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.toggle-button {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.toggle-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #333;
+}
+
+.visualization-error {
+  padding: 16px;
+  color: #d32f2f;
+  text-align: center;
+  font-size: 14px;
+  background-color: #ffebee;
+  border-radius: 4px;
+}
+
+/* Styles pour le tableau de statistiques */
+.stats-table-wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin-bottom: 16px;
+}
+
+.stats-table th, 
+.stats-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.stats-table th {
+  background-color: #f7f9fc;
+  font-weight: 600;
+  color: #333;
+}
+
+.stats-table tr:last-child td {
+  border-bottom: none;
+}
+
+.stats-table tr:hover {
+  background-color: #f5f5f5;
+}
+
+/* Styles spécifiques pour Recharts */
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-value {
+  color: #333 !important;
+}
+
+.recharts-legend-item-text {
+  color: #333 !important;
+}
